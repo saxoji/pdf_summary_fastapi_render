@@ -9,6 +9,7 @@ import aiohttp
 from typing import Optional
 import tiktoken
 import uvicorn
+import datetime
 
 # Swagger 헤더 설정
 SWAGGER_HEADERS = {
@@ -102,6 +103,27 @@ def split_text_into_chunks(text: str, max_tokens: int = 4000) -> list:
 
 async def summarize_text_chunk(api_key: str, text: str) -> str:
     """텍스트 청크를 요약하는 함수"""
+    system_prompt = """당신은 학술 논문과 문서를 상세하게 요약하는 전문가입니다. 
+주요 내용을 다음과 같은 구조로 상세하게 요약해주세요:
+
+1. 핵심 주제 및 목적
+2. 주요 내용 분석
+   - 중요한 주장과 논점
+   - 핵심 개념과 방법론
+   - 주요 발견사항
+3. 세부 내용 설명
+   - 구체적인 예시와 데이터
+   - 중요한 수치와 통계
+4. 결론 및 시사점
+
+가능한 한 구체적이고 자세하게 요약해주되, 원문의 중요한 내용이 누락되지 않도록 해주세요."""
+
+    user_prompt = f"""다음 텍스트를 상세하게 분석하고 요약해주세요. 
+중요한 정보나 수치는 구체적으로 포함시켜 주세요.
+
+텍스트 내용:
+{text}"""
+
     async with aiohttp.ClientSession() as session:
         async with session.post(
             "https://api.openai.com/v1/chat/completions",
@@ -112,10 +134,11 @@ async def summarize_text_chunk(api_key: str, text: str) -> str:
             json={
                 "model": "gpt-4o",
                 "messages": [
-                    {"role": "system", "content": "당신은 학술 논문과 문서를 요약하는 전문가입니다."},
-                    {"role": "user", "content": f"다음 텍스트를 요약해주세요:\n\n{text}"}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
-                "max_tokens": 1500
+                "max_tokens": 4000,
+                "temperature": 0.7
             }
         ) as response:
             if response.status != 200:
@@ -152,7 +175,6 @@ async def extract_and_summarize(request: PDFExtractRequest):
         saved_files.append(saved_path)
         
         # 결과 파일 읽기
-        text_content = ""
         with open(saved_path, 'r', encoding='utf-8') as f:
             text_content = f.read()
         
@@ -161,12 +183,21 @@ async def extract_and_summarize(request: PDFExtractRequest):
         
         # 각 청크 요약
         summaries = []
-        for chunk in text_chunks:
+        for i, chunk in enumerate(text_chunks, 1):
             summary = await summarize_text_chunk(request.api_key, chunk)
-            summaries.append(summary)
+            summaries.append(f"=== 섹션 {i} 요약 ===\n\n{summary}")
         
         # 최종 요약본 생성
-        final_summary = "\n\n".join(summaries)
+        final_summary = "\n\n" + "\n\n".join(summaries)
+        
+        # 최종 요약본에 메타 정보 추가
+        meta_info = f"""문서 요약 리포트
+생성 시간: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+원본 URL: {request.pdf_url}
+총 섹션 수: {len(text_chunks)}
+---------------------------------------------------\n"""
+        
+        final_summary = meta_info + final_summary
         
         return {
             "text_content": text_content,
