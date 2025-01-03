@@ -12,7 +12,7 @@ import uvicorn
 
 # Swagger 헤더 설정
 SWAGGER_HEADERS = {
-    "title": "LINKBRICKS HORIZON-AI PDF SUMMARY API ENGINE",
+    "title": "LINKBRICKS HORIZON-AI PDF TO TEXT API ENGINE",
     "version": "100.100.100",
     "description": "## PDF 텍스트 추출 및 요약 엔진 \n - API Swagger \n - PDF to TEXT \n - Text Summarization with GPT-4o",
     "contact": {
@@ -147,16 +147,14 @@ async def extract_and_summarize(request: PDFExtractRequest):
             'File': request.pdf_url
         }, from_format='pdf')
         
-        # 결과 파일 저장
-        result.save_files(UPLOAD_DIR)
-        saved_files.extend([file['path'] for file in result.files])
+        # 결과 파일 저장 및 경로 가져오기
+        saved_path = result.save_files(UPLOAD_DIR)[0]
+        saved_files.append(saved_path)
         
         # 결과 파일 읽기
         text_content = ""
-        for file_info in result.files:
-            file_path = file_info['path']
-            with open(file_path, 'r', encoding='utf-8') as f:
-                text_content += f.read()
+        with open(saved_path, 'r', encoding='utf-8') as f:
+            text_content = f.read()
         
         # 텍스트를 청크로 분할
         text_chunks = split_text_into_chunks(text_content)
